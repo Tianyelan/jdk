@@ -95,7 +95,47 @@ void MethodMatcher::init(Symbol* class_name, Mode class_mode,
  _signature = signature;
 }
 
+static bool is_position_to_replace_by_plus(const char *pos) {
+  const char *cursor = pos + 1;
+  const char *not_seperator_pos = NULL;
+  int colon = 0;
+  while (*cursor != '\0') {
+    if (strchr(" ,:.", *cursor)) {
+      if (not_seperator_pos != NULL)
+        return false;
+    } else if (*cursor != '*')
+      not_seperator_pos = cursor;
+    ++cursor;
+  }
+  return true;
+}
+
+static char *canonicalize_lambda_pattern(char *cursor) {
+  static const char *pattern = "$$Lambda$";
+  static int next[] = {-1, 0, -1, -1, -1, -1, -1, -1, 0};
+
+  int k = -1;
+  while (*cursor != '\0') {
+    while (k > -1 && pattern[k+1] != *cursor)
+      k = next[k];
+    if (pattern[k+1] == *cursor)
+      ++k;
+    if (k == (int)(strlen(pattern) - 1)) {
+      char *pos = cursor + 1;
+      while (*pos != '/' && *pos != '\0' &&
+             *pos >= '0' && *pos <= '9')
+        ++pos;
+
+      if (*pos == '/' && is_position_to_replace_by_plus(pos))
+        return pos;
+    }
+    ++cursor;
+  }
+  return NULL;
+}
+
 bool MethodMatcher::canonicalize(char * line, const char *& error_msg) {
+  char *lambda_replaced_pos = canonicalize_lambda_pattern(line);
   char* colon = strstr(line, "::");
   bool have_colon = (colon != NULL);
   if (have_colon) {
@@ -114,7 +154,7 @@ bool MethodMatcher::canonicalize(char * line, const char *& error_msg) {
           break;
         }
 
-        if (*lp == '/') {
+        if (*lp == '/' && lp != lambda_replaced_pos) {
           error_msg = "Method pattern uses '/' together with '::'";
           return false;
         }
@@ -135,7 +175,7 @@ bool MethodMatcher::canonicalize(char * line, const char *& error_msg) {
           break;
         }
 
-        if (!in_signature && (*lp == '/')) {
+        if (!in_signature && *lp == '/' && lp != lambda_replaced_pos) {
           error_msg = "Method pattern uses mixed '/' and '.' package separators";
           return false;
         }
@@ -147,6 +187,9 @@ bool MethodMatcher::canonicalize(char * line, const char *& error_msg) {
       }
     }
   }
+
+  if (lambda_replaced_pos != NULL)
+    *lambda_replaced_pos = '+';
 
   for (char* lp = line; *lp != '\0'; lp++) {
     // Allow '.' to separate the class name from the method name.
