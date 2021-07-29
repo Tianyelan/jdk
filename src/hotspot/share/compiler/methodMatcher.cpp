@@ -95,7 +95,31 @@ void MethodMatcher::init(Symbol* class_name, Mode class_mode,
  _signature = signature;
 }
 
+static void canonicalize_hidden_pattern(char *line) {
+  char *pos = line;
+  while ((pos = strchr(pos, '/')) != NULL) {
+    if (*(pos + 1) == '*') {
+      // check if is at the end of pattern.
+      char *cursor = pos + 2;
+      char *not_seperator_pos = NULL;
+      while (*cursor != '\0') {
+        if (strchr(" ,:.", *cursor)) {
+          if (not_seperator_pos != NULL)
+            return ;
+        } else
+          not_seperator_pos = cursor;
+        ++cursor;
+      }
+      *pos = '+';
+      return ;
+    } else if (strncmp(pos, "/0x", 3) == 0)
+      *pos = '+';
+    ++pos;
+  }
+}
+
 bool MethodMatcher::canonicalize(char * line, const char *& error_msg) {
+  canonicalize_hidden_pattern(line);
   char* colon = strstr(line, "::");
   bool have_colon = (colon != NULL);
   if (have_colon) {
